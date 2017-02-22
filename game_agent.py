@@ -7,13 +7,101 @@ You must test your agent's strength against a set of agents with known
 relative strength using tournament.py and include the results in your report.
 """
 import random
+import logging
+import math
+import numpy as np
 
+logging.basicConfig(level=logging.INFO)
 
 class Timeout(Exception):
     """Subclass base exception for code clarity."""
     pass
 
 
+class UnknownSearchMethod(Exception):
+    def __init__(self, method):
+        self.unknown_method = method
+
+    def __str__(self):
+        return "Unknown search method {}".format(self.unknown_method)
+
+
+def is_game_over(game):
+    """ Check whether it's game over state, i.e either active player
+    loses or wins
+
+    Parameters
+    ----------
+    game : `isolation.Board`
+        An instance of `isolation.Board` encoding the current state of the
+        game (e.g., player locations and blocked cells).
+
+    Returns
+    -------
+    Boolean 
+        whether the game is over
+    """
+    return (game.is_winner(game.active_player) or
+           game.is_loser(game.active_player))
+
+def real_estate(game, player):
+    left, right = math.ceil(0.25 * game.width), int(0.75 * game.width)
+    top, bottom = math.ceil(0.25 * game.height), int(0.75* game.height)
+    symbol = game.get_player_symbol(player) 
+
+    estate = sum([1 for i in range(left, right) for j in range(top, bottom) 
+        if game.get_symbol_from_state(i, j) == symbol])
+    return estate 
+
+def centrality(game, player):
+    legal_moves = game.get_legal_moves(player)
+    center = (game.height // 2, game.width // 2)
+    distance = sum([ (center[0] - move[0]) ** 2 + (center[1] - move[1]) ** 2for move in legal_moves])
+    return distance
+     
+def entropy(game, player):
+    """Calculate the entropy of given player's legal moves.
+    entropy is defined as -P(at_left) * log(P(at_left)) - P(at_right) * log(P(at_right))
+    where P(at_left) is the probability of moves at the left half of board, 
+    and P(at_right) is the probability of moves at the right half of board.
+    P(at_left) + P(at_right) = 1.
+
+    Parameters
+    ----------
+    game : `isolation.Board`
+        An instance of `isolation.Board` encoding the current state of the
+        game (e.g., player locations and blocked cells).
+
+    player : object
+        A player instance in the current game (i.e., an object corresponding to
+        one of the player objects `game.__player_1__` or `game.__player_2__`.)
+
+    Returns
+    -------
+    float
+        The entropy of the specified player's legal moves.
+    """
+    legal_moves = game.get_legal_moves(player)
+    total_moves_count = len(legal_moves)
+    if total_moves_count == 0:
+        return 0.0
+
+    #loc = game.get_player_location(player)
+    reference_point = (game.width // 2)
+
+    if loc:
+        reference_point = loc[1]
+    
+    left_count = sum([1 for move in legal_moves if move[1] < reference_point])
+    right_count = total_moves_count - left_count
+
+    ent = 0.0
+    probs = [left_count/total_moves_count, right_count/total_moves_count]
+    for p in probs:
+        if p > 0:
+            ent = ent + (-p * np.log(p))
+    return ent
+        
 def custom_score(game, player):
     """Calculate the heuristic value of a game state from the point of view
     of the given player.
@@ -37,14 +125,19 @@ def custom_score(game, player):
         The heuristic value of the current game state to the specified player.
     """
 
-    # TODO: finish this function!
     if game.is_loser(player):
         return float("-inf")
 
     if game.is_winner(player):
         return float("inf")
-    diff = len(game.get_legal_moves(player))- len(game.get_legal_moves(game.get_opponent(player)))
-    return float(diff)
+
+    diff_of_moves = len(game.get_legal_moves(player))- len(game.get_legal_moves(game.get_opponent(player)))
+    diff_of_real_estate = real_estate(game, player) - real_estate(game, game.get_opponent(player))
+    #diff_entropy = entropy(game, game.active_player) - entropy(game, game.inactive_player)
+    #return float(diff_of_moves * 0.0 + diff_of_centrality * 1)
+    #return float(diff_of_moves) * 0.5 +  diff_of_centrality * 0.5
+    diff_of_centrality = centrality(game, game.inactive_player) - centrality(game, game.active_player)
+    return float(diff_of_moves) * 0.5 +  diff_of_real_estate * 0.5
 
 
 class CustomPlayer:
@@ -124,47 +217,58 @@ class CustomPlayer:
 
         self.time_left = time_left
 
-        # TODO: finish this function!
-
         # Perform any required initializations, including selecting an initial
         # move from the game board (i.e., an opening book), or returning
         # immediately if there are no legal moves
         if not legal_moves:
             return (-1, -1)
 
-        print("\niterative={}, method={}, search_depth={}".format(self.iterative, self.method, self.search_depth))
+        # helper method to search till depth for given method
+        # raise UnknownSearchMethod exception is method is unrecognized
+        def search(game, method, depth):
+            score = 0
+            move =None
+
+            if method == 'minimax':
+                score, move = self.minimax(game, depth)
+            elif method == 'alphabeta':
+                score, move = self.alphabeta(game, depth)   
+            else:
+                raise UnknownSearchMethod(self.method)
+            return score, move
+
         try:
             # The search method call (alpha beta or minimax) should happen in
             # here in order to avoid timeout. The try/except block will
             # automatically catch the exception raised by the search method
             # when the timer gets close to expiring
+            best_move = None
+
             if self.iterative:
                 max_depth = game.width * game.height - 2
                 for d in range(0, max_depth):
                     depth = d + 1
-                    if self.method == 'minimax':
-                        best_score, best_move = self.minimax(game, depth)
-                    elif self.method == 'alphabeta':
-                        best_score, best_move = self.alphabeta(game, depth)   
-                    print("time_left={} after depth={}".format(self.time_left(), depth))
+                    _, best_move = search(game, self.method, depth)         
+
+                    #logging.info("Iterative: time_left={} after depth={}".format(
+                    #    self.time_left(), depth))
+
                     if self.time_left() <= 0:
                         return best_move
             else:
-                if self.method == 'minimax':
-                    best_score, best_move = self.minimax(game, self.search_depth)
-                elif self.method == 'alphabeta':
-                    best_score, best_move = self.alphabeta(game, self.search_depth)
+                _, best_move = search(game, self.method, self.search_depth)
 
         except Timeout:
             # Handle any actions required at timeout, if necessary
-            pass
+            logging.debug("timeout when get_move. Iterative={}, method={}".format(
+                self.iterative, self.method))
 
         # Return the best move from the last completed search iteration
         return best_move
 
     def minimax(self, game, depth, maximizing_player=True):
         """Implement the minimax search algorithm as described in the lectures.
-
+        
         Parameters
         ----------
         game : isolation.Board
@@ -197,7 +301,7 @@ class CustomPlayer:
             raise Timeout()
 
         # TODO: finish this function!
-        if depth <= 0:
+        if depth <= 0 or is_game_over(game):
             return self.score(game, self), None
 
         best_move = None
@@ -207,7 +311,6 @@ class CustomPlayer:
         else:
             best_score = float("inf")
 
-        #print("pos={}".format(game.get_player_location(self)))
         moves = game.get_legal_moves()
         for move in moves:
             game_copy = game.forecast_move(move)
@@ -264,8 +367,7 @@ class CustomPlayer:
         if self.time_left() < self.TIMER_THRESHOLD:
             raise Timeout()
 
-        # TODO: finish this function!
-        if depth <= 0:
+        if depth <= 0 or is_game_over(game):
             return self.score(game, self), None
 
         best_move = None
@@ -281,8 +383,8 @@ class CustomPlayer:
                     best_move = move
                 if alpha >= beta:
                     return alpha, best_move
-            return alpha, best_move
 
+            return alpha, best_move
         else:
             for move in moves:
                 game_copy = game.forecast_move(move)
@@ -292,4 +394,41 @@ class CustomPlayer:
                     best_move = move
                 if beta <= alpha:
                     return beta, best_move
+
             return beta, best_move
+
+    def negamax(self, game, depth, color=1):
+        if depth <= 0 or is_game_over(game):
+            return color* self.score(game, self), None
+
+        best_score = float("-inf")
+        best_move = None
+
+        moves = game.get_legal_moves()
+        for move in moves:
+            game_copy = game.forecast_move(move)
+            current_score, _ = -1 * self.negamax(game, depth - 1, -color)
+            if current_score > best_score:
+                best_score = current_score
+                best_move = move
+        return best_score, best_move
+
+    def ab_negamax(self, game, depth, alpha=float("-inf"), beta=float("inf"), color=1):
+        if depth <= 0 or is_game_over(game):
+            return color* self.score(game, self), None
+
+        best_score = float("-inf")
+        best_move = None
+
+        moves = game.get_legal_moves()
+        for move in moves:
+            game_copy = game.forecast_move(move)
+            current_score, _ = -1 * self.ab_negamax(game_copy, depth - 1, -beta, -alpha, -color)
+            if current_score > best_score:
+                best_score = current_score
+                best_move = move
+            alpha = np.max(alpha, current_score)
+            if alpha >= beta:
+                return best_score, best_move
+
+        return best_score, best_move

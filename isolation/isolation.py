@@ -69,6 +69,7 @@ class Board(object):
         """
         return self.__inactive_player__
 
+
     def get_opponent(self, player):
         """
         Return the opponent of the supplied player.
@@ -90,6 +91,12 @@ class Board(object):
         elif player == self.__inactive_player__:
             return self.__active_player__
         raise RuntimeError("`player` must be an object registered as a player in the current game.")
+
+    def get_player_symbol(self, player):
+        return self.__player_symbols__[player]
+
+    def get_symbol_from_state(self, x, y):
+        return self.__board_state__[i][j]
 
     def copy(self):
         """ Return a deep copy of the current board. """
