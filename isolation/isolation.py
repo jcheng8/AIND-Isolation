@@ -96,7 +96,7 @@ class Board(object):
         return self.__player_symbols__[player]
 
     def get_symbol_from_state(self, x, y):
-        return self.__board_state__[i][j]
+        return self.__board_state__[x][y]
 
     def copy(self):
         """ Return a deep copy of the current board. """

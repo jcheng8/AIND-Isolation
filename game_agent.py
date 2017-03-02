@@ -19,6 +19,7 @@ class Timeout(Exception):
 
 
 class UnknownSearchMethod(Exception):
+    """Subclass base exception for unknown search method"""
     def __init__(self, method):
         self.unknown_method = method
 
@@ -44,7 +45,60 @@ def is_game_over(game):
     return (game.is_winner(game.active_player) or
            game.is_loser(game.active_player))
 
-def real_estate(game, player):
+def threat(game, player):
+    """Evaluation function calculating the threat of player's legal moves to opponent.
+    Threat is defined as cardinality of intersection of player's legal moves and opponent's
+    legal moves
+
+    Parameters
+    ----------
+    game : `isolation.Board`
+        An instance of `isolation.Board` encoding the current state of the
+        game (e.g., player locations and blocked cells).
+    player : object
+        A player instance in the current game (i.e., an object corresponding to
+        one of the player objects `game.__player_1__` or `game.__player_2__`.)
+
+    Returns
+    -------
+    float
+        the numeric representation of threat
+    """
+
+    moves = game.get_legal_moves(player)
+    opp_moves = game.get_legal_moves(game.get_opponent(player))
+    shared_moves = [1 for move in opp_moves if move in moves] 
+    return sum(shared_moves)
+
+def monopoly(game, player):
+    """Evaluation function  calculating the game score similar to `Monopoly` game:
+    the  number of valuable estate player occupies so far. Here valuable estate 
+    translates to the cells in the central quandrant (the /// area in the below board)
+    _________________
+    |   |   |   |   |
+    -----------------
+    |   |///|///|   |
+    -----------------
+    |   |///|///|   |
+    -----------------
+    |   |   |   |   |
+    -----------------
+
+    Parameters
+    ----------
+    game : `isolation.Board`
+        An instance of `isolation.Board` encoding the current state of the
+        game (e.g., player locations and blocked cells).
+    player : object
+        A player instance in the current game (i.e., an object corresponding to
+        one of the player objects `game.__player_1__` or `game.__player_2__`.)
+
+    Returns
+    -------
+    float
+        the numeric representation of occupied valuable estate 
+    """
+
     left, right = math.ceil(0.25 * game.width), int(0.75 * game.width)
     top, bottom = math.ceil(0.25 * game.height), int(0.75* game.height)
     symbol = game.get_player_symbol(player) 
@@ -54,13 +108,31 @@ def real_estate(game, player):
     return estate 
 
 def centrality(game, player):
+    """Evaluation function  calculating the centrality of given player's current
+    legal moves. Centrality is defined as the distance from move's destination cell
+    to the board center.
+
+    Parameters
+    ----------
+    game : `isolation.Board`
+        An instance of `isolation.Board` encoding the current state of the
+        game (e.g., player locations and blocked cells).
+    player : object
+        A player instance in the current game (i.e., an object corresponding to
+        one of the player objects `game.__player_1__` or `game.__player_2__`.)
+
+    Returns
+    -------
+    float
+        the summation of legal moves' centrality 
+    """
     legal_moves = game.get_legal_moves(player)
     center = (game.height // 2, game.width // 2)
     distance = sum([ (center[0] - move[0]) ** 2 + (center[1] - move[1]) ** 2for move in legal_moves])
     return distance
      
 def entropy(game, player):
-    """Calculate the entropy of given player's legal moves.
+    """Evaluation function calculating the entropy of given player's legal moves.
     entropy is defined as -P(at_left) * log(P(at_left)) - P(at_right) * log(P(at_right))
     where P(at_left) is the probability of moves at the left half of board, 
     and P(at_right) is the probability of moves at the right half of board.
@@ -86,11 +158,7 @@ def entropy(game, player):
     if total_moves_count == 0:
         return 0.0
 
-    #loc = game.get_player_location(player)
     reference_point = (game.width // 2)
-
-    if loc:
-        reference_point = loc[1]
     
     left_count = sum([1 for move in legal_moves if move[1] < reference_point])
     right_count = total_moves_count - left_count
@@ -131,13 +199,15 @@ def custom_score(game, player):
     if game.is_winner(player):
         return float("inf")
 
-    diff_of_moves = len(game.get_legal_moves(player))- len(game.get_legal_moves(game.get_opponent(player)))
-    diff_of_real_estate = real_estate(game, player) - real_estate(game, game.get_opponent(player))
+    opponent = game.get_opponent(player)
+    diff_of_moves = len(game.get_legal_moves(player)) - len(game.get_legal_moves(opponent))
+    #diff_of_monopoly = monopoly(game, player) - monopoly(game, game.get_opponent(player))
+    threat_score = threat(game, player)
     #diff_entropy = entropy(game, game.active_player) - entropy(game, game.inactive_player)
     #return float(diff_of_moves * 0.0 + diff_of_centrality * 1)
     #return float(diff_of_moves) * 0.5 +  diff_of_centrality * 0.5
-    diff_of_centrality = centrality(game, game.inactive_player) - centrality(game, game.active_player)
-    return float(diff_of_moves) * 0.5 +  diff_of_real_estate * 0.5
+    #diff_of_centrality = centrality(game, game.inactive_player) - centrality(game, game.active_player)
+    return float(diff_of_moves) * 0.5 +  threat_score * 0.5
 
 
 class CustomPlayer:
@@ -300,7 +370,6 @@ class CustomPlayer:
         if self.time_left() < self.TIMER_THRESHOLD:
             raise Timeout()
 
-        # TODO: finish this function!
         if depth <= 0 or is_game_over(game):
             return self.score(game, self), None
 
@@ -398,8 +467,33 @@ class CustomPlayer:
             return beta, best_move
 
     def negamax(self, game, depth, color=1):
+        """Implement the negamax search algorithm as described in wikipedia.
+        
+        Parameters
+        ----------
+        game : isolation.Board
+            An instance of the Isolation game `Board` class representing the
+            current game state
+
+        depth : int
+            Depth is an integer representing the maximum number of plies to
+            search in the game tree before aborting
+
+        color : int (0 or 1)
+            Flag indicating whether the current search depth corresponds to a
+            maximizing layer (1) or a minimizing layer (0)
+
+        Returns
+        -------
+        float
+            The score for the current search branch
+
+        tuple(int, int)
+            The best move for the current branch; (-1, -1) for no legal moves
+        """
+
         if depth <= 0 or is_game_over(game):
-            return color* self.score(game, self), None
+            return color * self.score(game, self), None
 
         best_score = float("-inf")
         best_move = None
@@ -414,6 +508,38 @@ class CustomPlayer:
         return best_score, best_move
 
     def ab_negamax(self, game, depth, alpha=float("-inf"), beta=float("inf"), color=1):
+        """Implement negamax search with alpha-beta pruning as described in the
+        wikipedia.
+
+        Parameters
+        ----------
+        game : isolation.Board
+            An instance of the Isolation game `Board` class representing the
+            current game state
+
+        depth : int
+            Depth is an integer representing the maximum number of plies to
+            search in the game tree before aborting
+
+        alpha : float
+            Alpha limits the lower bound of search on minimizing layers
+
+        beta : float
+            Beta limits the upper bound of search on maximizing layers
+
+        color : int (0 or 1)
+            Flag indicating whether the current search depth corresponds to a
+            maximizing layer (1) or a minimizing layer (0)
+
+        Returns
+        -------
+        float
+            The score for the current search branch
+
+        tuple(int, int)
+            The best move for the current branch; (-1, -1) for no legal moves
+        """
+
         if depth <= 0 or is_game_over(game):
             return color* self.score(game, self), None
 
