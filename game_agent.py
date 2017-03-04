@@ -9,6 +9,7 @@ relative strength using tournament.py and include the results in your report.
 import random
 import logging
 import math
+from collections import namedtuple
 import numpy as np
 
 logging.basicConfig(level=logging.INFO)
@@ -201,13 +202,17 @@ def custom_score(game, player):
 
     opponent = game.get_opponent(player)
     diff_of_moves = len(game.get_legal_moves(player)) - len(game.get_legal_moves(opponent))
-    #diff_of_monopoly = monopoly(game, player) - monopoly(game, game.get_opponent(player))
-    threat_score = threat(game, player)
+    diff_of_monopoly = monopoly(game, player) - monopoly(game, game.get_opponent(player))
+    #threat_score = threat(game, player)
     #diff_entropy = entropy(game, game.active_player) - entropy(game, game.inactive_player)
-    #return float(diff_of_moves * 0.0 + diff_of_centrality * 1)
-    #return float(diff_of_moves) * 0.5 +  diff_of_centrality * 0.5
     #diff_of_centrality = centrality(game, game.inactive_player) - centrality(game, game.active_player)
-    return float(diff_of_moves) * 0.5 +  threat_score * 0.5
+    #score_1 = float(diff_of_moves * 0.0 + diff_of_centrality * 1)
+    #score_2 = float(diff_of_moves) * 0.5 +  diff_of_centrality * 0.5
+    score = float(diff_of_moves) * 0.5 +  diff_of_monopoly * 0.5
+    return score
+
+
+AlphaBetaResult = namedtuple('AlphaBetaResult', ['depth', 'lower_bound', 'upper_bound', 'move'])
 
 
 class CustomPlayer:
@@ -248,6 +253,7 @@ class CustomPlayer:
         self.method = method
         self.time_left = None
         self.TIMER_THRESHOLD = timeout
+        self.transposition_table =  {}
 
     def get_move(self, game, legal_moves, time_left):
         """Search for the best move from the available legal moves and return a
@@ -433,6 +439,7 @@ class CustomPlayer:
                 to pass the project unit tests; you cannot call any other
                 evaluation function directly.
         """
+
         if self.time_left() < self.TIMER_THRESHOLD:
             raise Timeout()
 
@@ -465,6 +472,18 @@ class CustomPlayer:
                     return beta, best_move
 
             return beta, best_move
+
+    def store(self, state, ab_result):
+        """Store alphabeta result into transpostion_table
+        Parameters
+        ----------
+        state: tuple of int
+            game state representing all game board cells occupancy
+        ab_result: AlphabetaResult
+            alphabeta result associated with given state
+
+        """
+        self.transposition_table[state] = ab_result 
 
     def negamax(self, game, depth, color=1):
         """Implement the negamax search algorithm as described in wikipedia.
