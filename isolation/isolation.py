@@ -69,6 +69,9 @@ class Board(object):
         """
         return self.__inactive_player__
 
+    @property
+    def game_state(self):
+        return tuple(sum(self.__board_state__,[]))
 
     def get_opponent(self, player):
         """
